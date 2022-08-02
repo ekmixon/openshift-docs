@@ -36,7 +36,7 @@ def _fix_ids_for_html4(tree):
     # Filter the elements that start with an underscore
     underscore_id_eles = []
     for ele in id_eles:
-        id_val = ele.get(LXML_XML_NS + 'id')
+        id_val = ele.get(f'{LXML_XML_NS}id')
         if id_val.startswith("_"):
             underscore_id_eles.append(ele)
         else:
@@ -48,7 +48,7 @@ def _fix_ids_for_html4(tree):
 
     # Fix each underscore id
     for id_ele in underscore_id_eles:
-        id_val = id_ele.get(LXML_XML_NS + 'id')
+        id_val = id_ele.get(f'{LXML_XML_NS}id')
 
         # Remove the underscore and if it now starts with a number, change the number to a word
         new_id = utils.create_xml_id(id_val)
@@ -58,12 +58,12 @@ def _fix_ids_for_html4(tree):
         count = 0
         while new_id in ids:
             count += 1
-            new_id = base_new_id + "-" + str(count)
+            new_id = f"{base_new_id}-{count}"
 
         # Set the new id
         if new_id != id_val:
             ids.append(new_id)
-            id_ele.set(LXML_XML_NS + 'id', new_id)
+            id_ele.set(f'{LXML_XML_NS}id', new_id)
             id_ele.set("remap", id_val)
 
             # update any old references
@@ -85,24 +85,24 @@ cli.init_logging(False, False)
 for distro in os.listdir("drupal-build"):
 
     print("---------------------------------------")
-    print(("BUILDING " + distro + " BOOKS"))
+    print(f"BUILDING {distro} BOOKS")
     print("---------------------------------------")
 
     for book in os.listdir(os.path.join("drupal-build", distro)):
 
-        #print(os.getcwd() + "\n")
-        #if not os.path.isdir("drupal-build/" + distro + "/" + book):
-            #print("---------------------------------------")
-            #print(">>> No Book " + book + " in this repo. Skipping <<<")
-            #print("---------------------------------------")
+    #print(os.getcwd() + "\n")
+    #if not os.path.isdir("drupal-build/" + distro + "/" + book):
+        #print("---------------------------------------")
+        #print(">>> No Book " + book + " in this repo. Skipping <<<")
+        #print("---------------------------------------")
 
-            #continue
+        #continue
 
         # rest api book is a pain and doesn't convert well
         if book == "rest_api":
           continue
 
-        os.chdir("drupal-build/" + distro + "/" + book)
+        os.chdir(f"drupal-build/{distro}/{book}")
         #print(os.getcwd() + "\n")
 
         # Create the transformer instance
@@ -110,9 +110,9 @@ for distro in os.listdir("drupal-build"):
 
         try:
             # Transform the AsciiDoc to DocBook XML
-            print((">>> Working on " + book + " book in " + distro + " <<<"))
+            print(f">>> Working on {book} book in {distro} <<<")
             if not transformer._build_docbook_src("master.adoc", "build"):
-                print(("Could not transform book " + book))
+                print(f"Could not transform book {book}")
                 all_validated = False
                 continue
 
@@ -128,13 +128,13 @@ for distro in os.listdir("drupal-build"):
 
             # Validate the transformed XML
             if not transformer._validate_docbook_idrefs(tree):
-                logging.error(">>> Validation of book " + book + " in " + distro + " failed <<<")
+                logging.error(f">>> Validation of book {book} in {distro} failed <<<")
                 all_validated = False
         except (XMLSyntaxError, XIncludeError, InvalidInputException) as e:
             logging.error(e)
             all_validated = False
         finally:
-            print((">>> Finished with " + book + " book in " + distro + " <<<"))
+            print(f">>> Finished with {book} book in {distro} <<<")
             print("---------------------------------------")
             os.chdir("../../../")
 

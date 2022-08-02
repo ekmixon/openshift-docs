@@ -61,12 +61,11 @@ class FindUnused():
         """
         included_modules = {}
         for filename in assemblies:
-            currentfile = open(filename,"r")
-            for line in currentfile.readlines():
-                for key in modules:
-                    if key in line:
-                        included_modules[key] = ""
-            currentfile.close()
+            with open(filename,"r") as currentfile:
+                for line in currentfile:
+                    for key in modules:
+                        if key in line:
+                            included_modules[key] = ""
         for key in included_modules:
             del modules[key]
         return modules

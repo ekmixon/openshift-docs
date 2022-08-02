@@ -190,11 +190,7 @@ def iter_tree(node, distro, dir_callback=None, topic_callback=None, include_path
     """
     if "Topics" in node:
         if check_node_distro_matches(node, distro):
-            if include_path:
-                topics_dir = os.path.join(parent_dir, node["Dir"])
-            else:
-                topics_dir = ""
-
+            topics_dir = os.path.join(parent_dir, node["Dir"]) if include_path else ""
             if dir_callback is not None:
                 dir_callback(node, parent_dir, depth)
 
@@ -212,14 +208,11 @@ def check_node_distro_matches(node, distro):
     """
     if "Distros" not in node:
         return True
-    else:
-        node_distros = [x.strip() for x in node['Distros'].split(",")]
-        for node_distro in node_distros:
-            # Check for an exact match, or a glob match
-            if node_distro == distro or fnmatch.fnmatchcase(distro, node_distro):
-                return True
-
-    return False
+    node_distros = [x.strip() for x in node['Distros'].split(",")]
+    return any(
+        node_distro == distro or fnmatch.fnmatchcase(distro, node_distro)
+        for node_distro in node_distros
+    )
 
 
 def ensure_directory(directory):
@@ -253,10 +246,10 @@ def build_master_files(info):
             docinfo_file = os.path.join(book_dest_dir, 'docinfo.xml')
             master_base = MASTER_FILE_BASE.format(**book_info)
 
-            log.debug("Writing " + master_file)
+            log.debug(f"Writing {master_file}")
             with open(master_file, "w") as f:
                 f.write(master_base + master)
-            log.debug("Writing " + docinfo_file)
+            log.debug(f"Writing {docinfo_file}")
             with open(docinfo_file, "w") as f:
                 f.write(DOCINFO_BASE.format(**book_info))
         else:
@@ -268,14 +261,12 @@ def build_master_files(info):
                 first_file = os.path.join(info['src_dir'], book['Dir'], book['Topics'][0]['File'] + ".adoc")
                 preface_title = None
                 with open(first_file, "r") as f:
-                    line = f.readline()
-                    while line:
+                    while line := f.readline():
                         if include_line(line):
                             preface_title = re.sub("^=+ ", "", line)
                             break
-                        line = f.readline()
                 if preface_title is not None:
-                    info['preface-title'] = ":preface-title: " + preface_title
+                    info['preface-title'] = f":preface-title: {preface_title}"
             all_in_one_text += master
 
     if all_in_one:
@@ -284,10 +275,10 @@ def build_master_files(info):
 
         master_base = MASTER_FILE_BASE.format(**info)
 
-        log.debug("Writing " + master_file)
+        log.debug(f"Writing {master_file}")
         with open(master_file, "w") as f:
             f.write(master_base + all_in_one_text)
-        log.debug("Writing " + docinfo_file)
+        log.debug(f"Writing {docinfo_file}")
         with open(docinfo_file, "w") as f:
             f.write(DOCINFO_BASE.format(**info))
 
@@ -305,7 +296,7 @@ def generate_master_entry(node, book_dir, distro, include_name=True, all_in_one=
     def topic_callback(topic_node, parent_dir, depth):
         book_file_path = os.path.join(parent_dir, topic_node["File"] + ".adoc")
         file_path = os.path.join(book_dir, book_file_path)
-        include = "include::" + book_file_path + "[leveloffset=+" + str(depth) + "]"
+        include = f"include::{book_file_path}[leveloffset=+{str(depth)}]"
         if not all_in_one and file_path in COMMENT_FILES:
             master_entries.append("////")
             master_entries.append(include)
@@ -345,7 +336,7 @@ def reformat_for_drupal(info):
         for book in books:
             book_ids.extend(collect_existing_ids(book, distro, src_dir))
         for book in books:
-            file_to_id_map.update(build_file_to_id_map(book, distro, book_ids, src_dir))
+            file_to_id_map |= build_file_to_id_map(book, distro, book_ids, src_dir)
     else:
         for book in books:
             book_ids = collect_existing_ids(book, distro, src_dir)
@@ -460,7 +451,7 @@ def copy_file(info, book_src_dir, src_file, dest_dir, dest_file, include_check=T
 
             # Make sure we have a reference to the current working dir
             current_dir = cwd or os.path.dirname(src_file)
-            include_tag = include_vars.get("tag", None)
+            include_tag = include_vars.get("tag")
 
             # Copy the file and fix the content
             if not os.path.isfile(dest_include_file):
@@ -476,7 +467,11 @@ def copy_file(info, book_src_dir, src_file, dest_dir, dest_file, include_check=T
                 with open(dest_include_file, "w") as f:
                     f.write(include_content)
 
-            content = content.replace(include_text, include.expand("include::" + relative_path + "[\\2]"))
+            content = content.replace(
+                include_text,
+                include.expand(f"include::{relative_path}" + "[\\2]"),
+            )
+
 
     with open(dest_file, "w") as f:
         f.write(content)
@@ -493,10 +488,9 @@ def scrub_file(info, book_src_dir, src_file, tag=None, cwd=None):
     # procedure loads the file recognizing that it starts with http
     # it then checks if it exists or not, and if it exists, returns the raw data
     # data that it finds.
-    if(base_src_file.startswith("https://raw.githubusercontent.com/openshift/")):
+    if (base_src_file.startswith("https://raw.githubusercontent.com/openshift/")):
         try:
-            response = requests.get(base_src_file)
-            if(response):
+            if response := requests.get(base_src_file):
                 return response.text
             else:
                 raise ConnectionError("Malformed URL")
@@ -531,16 +525,14 @@ def scrub_file(info, book_src_dir, src_file, tag=None, cwd=None):
 
                 if info['all_in_one'] and base_src_file in ALL_IN_ONE_SCRAP_TITLE and line.startswith("= "):
                     continue
-                # Add a section id if one doesn't exist, so we have something to link to
                 elif current_id is None and src_file in info['file_to_id_map']:
                     file_id = info['file_to_id_map'][src_file]
-                    content += "[[" + file_id + "]]\n"
-            # Add a custom title id, if one is needed
+                    content += f"[[{file_id}" + "]]\n"
             elif line.startswith("=") and current_id is None:
                 for title in title_ids:
                     title_re = r"^=+ " + title.replace(".", "\\.").replace("?", "\\?") + "( (anchor|\[).*?)?(\n)?$"
                     if re.match(title_re, line):
-                        content += "[[" + title_ids[title] + "]]\n"
+                        content += f"[[{title_ids[title]}" + "]]\n"
 
             # Set the current id based on the line content
             if current_id is None and ID_RE.match(line.strip()):
@@ -554,7 +546,7 @@ def scrub_file(info, book_src_dir, src_file, tag=None, cwd=None):
     # Fix up any duplicate ids
     if base_src_file in DUPLICATE_IDS:
         for duplicate_id, new_id in list(DUPLICATE_IDS[base_src_file].items()):
-            content = content.replace("[[" + duplicate_id + "]]", "[[" + new_id + "]]")
+            content = content.replace(f"[[{duplicate_id}]]", f"[[{new_id}]]")
 
     # Replace incorrect links with correct ones
     if base_src_file in INCORRECT_LINKS:
@@ -574,11 +566,7 @@ def include_line(line):
     if line in IGNORE_LINES:
         return False
 
-    for macro in IGNORE_MACROS:
-        if line.startswith(":" + macro + ":"):
-            return False
-
-    return True
+    return not any(line.startswith(f":{macro}:") for macro in IGNORE_MACROS)
 
 
 def fix_links(content, info, book_src_dir, src_file, tag=None, cwd=None):
@@ -587,13 +575,10 @@ def fix_links(content, info, book_src_dir, src_file, tag=None, cwd=None):
     """
     if info['all_in_one']:
         content = fix_links(content, info['src_dir'], src_file, info)
+    elif book_src_dir in src_file:
+        content = _fix_links(content, book_src_dir, src_file, info, cwd=cwd)
     else:
-        # Determine if the tag should be passed when fixing the links. If it's in the same book, then process the entire file. If it's
-        # outside the book then don't process it.
-        if book_src_dir in src_file:
-            content = _fix_links(content, book_src_dir, src_file, info, cwd=cwd)
-        else:
-            content = _fix_links(content, book_src_dir, src_file, info, tag=tag, cwd=cwd)
+        content = _fix_links(content, book_src_dir, src_file, info, tag=tag, cwd=cwd)
 
     return content
 
@@ -634,14 +619,15 @@ def _fix_links(content, book_dir, src_file, info, tag=None, cwd=None):
                 fixed_link_file = BASE_PORTAL_URL + build_portal_url(info, book_name)
 
                 if link_anchor is None:
-                    fixed_link = "link:" + fixed_link_file + "#" + file_to_id_map[fixed_link_file_abs] + link_title
+                    fixed_link = f"link:{fixed_link_file}#{file_to_id_map[fixed_link_file_abs]}{link_title}"
+
                 else:
-                    fixed_link = "link:" + fixed_link_file + link_anchor + link_title
+                    fixed_link = f"link:{fixed_link_file}{link_anchor}{link_title}"
             else:
                 # Cross reference or link that isn't in the docs suite
                 fixed_link = link_text
                 if EXTERNAL_LINK_RE.search(link_file) is not None:
-                    rel_src_file = src_file.replace(os.path.dirname(book_dir) + "/", "")
+                    rel_src_file = src_file.replace(f"{os.path.dirname(book_dir)}/", "")
                     has_errors = True
                     log.error("ERROR (%s): \"%s\" appears to try to reference a file not included in the \"%s\" distro", rel_src_file, link_text.replace("\n", ""), info['distro'])
         else:
@@ -760,7 +746,7 @@ def build_file_id(file_title, file_to_id_map, existing_ids):
     file_id = base_id = re.sub(r"[\[\]\(\)#]", "", file_title.lower().replace("_", "-").replace(" ", "-"))
     count = 1
     while file_id in existing_ids or file_id in list(file_to_id_map.values()):
-        file_id = base_id + "-" + str(count)
+        file_id = f"{base_id}-{str(count)}"
         count += 1
 
     return file_id
@@ -773,19 +759,18 @@ def build_portal_url(info, book_name):
     product = info['product']
     version = info['product-version']
 
-    return generate_url_from_name(product) + "/" + generate_url_from_name(version) + "/html-single/" + generate_url_from_name(book_name) + "/"
+    return f"{generate_url_from_name(product)}/{generate_url_from_name(version)}/html-single/{generate_url_from_name(book_name)}/"
 
 
 def replace_nbsp(val):
     """Replaces non breaking spaces with a regular space"""
-    if val is not None:
-        # Check if the string is unicode
-        if isinstance(val, str):
-            return val.replace('\xa0', ' ')
-        else:
-            return val.replace('\xc2\xa0', ' ')
-    else:
+    if val is None:
         return None
+    # Check if the string is unicode
+    if isinstance(val, str):
+        return val.replace('\xa0', ' ')
+    else:
+        return val.replace('\xc2\xa0', ' ')
 
 
 def generate_url_from_name(name, delimiter='_'):
@@ -797,7 +782,7 @@ def generate_url_from_name(name, delimiter='_'):
     # Replace spaces with the delimiter
     url = re.sub("\s+", delimiter, url)
     # Replace multiple underscores with a single underscore
-    url = re.sub(delimiter + "+", delimiter, url)
+    url = re.sub(f"{delimiter}+", delimiter, url)
     return url.lower()
 
 
@@ -913,8 +898,8 @@ def parse_repo_config(config_file, distro, version):
     parser = configparser.SafeConfigParser()
     parser.read(config_file)
 
-    repo_urls = dict()
-    section_name = distro + "-" + version
+    repo_urls = {}
+    section_name = f"{distro}-{version}"
     if parser.has_section(section_name):
         for (key, value) in parser.items(section_name):
             repo_urls[key] = value
@@ -992,13 +977,13 @@ def main():
             git_dir = os.path.join(base_git_dir, git_dirname)
 
             try:
-                log.info("Fetching " + book_dir + " sources from GitLab")
+                log.info(f"Fetching {book_dir} sources from GitLab")
                 fetch_sources(gitlab_repo_url, args.branch, base_git_dir, git_dirname)
 
-                log.info("Syncing " + book_dir)
+                log.info(f"Syncing {book_dir}")
                 sync_directories(build_book_dir, git_dir, ["docinfo.xml"])
 
-                log.info("Pushing " + book_dir + " changes back to GitLab")
+                log.info(f"Pushing {book_dir} changes back to GitLab")
                 commit_and_push_changes(git_dir, args.branch, args.upstream_branch)
             except subprocess.CalledProcessError as e:
                 if e.output:
